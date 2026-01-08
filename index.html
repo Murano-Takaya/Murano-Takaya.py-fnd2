@@ -1,49 +1,117 @@
 
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My GitHub Page</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background-color: #f4f4f4;
-      color: #333;
-    }
-    header {
-      background: #007acc;
-      color: white;
-      text-align: center;
-      padding: 1.5rem;
-    }
-    main {
-      max-width: 800px;
-      margin: 2rem auto;
-      padding: 1rem;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-   head>
-<body>
-  <header>
-    <h1>ようこそ！GitHub Pagesサイトへ</h1>
-  </header>
-  <main>
-    <h2>自己紹介</h2>
-    <p>ここにあなたのプロフィールやプロジェクト紹介を書きましょう。</p>
-    <h2>リンク</h2>
-    <ul>
-      <li>https://github.com/</li>
-      <li>#ブログ</a></li>
-    </ul>
-  </main>
-  <footer>
-    &copy; 2026 My GitHub Page
-  </footer>
-</body>
-</html>
-``
+# qr_gui.py
+import qrcode
+from qrcode.constants import ERROR_CORRECT_M
+from PIL import ImageTk
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from pathlib import Path
+
+DEFAULT_BOX_SIZE = 8
+DEFAULT_BORDER = 4
+
+class QRApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("QRコード生成ツール")
+        self.geometry("560x460")
+        self.minsize(520, 420)
+
+        # ====== UI: 入力エリア ======
+        frm = ttk.Frame(self, padding=12)
+        frm.pack(fill="both", expand=True)
+
+        ttk.Label(frm, text="URL（またはテキスト）").grid(row=0, column=0, sticky="w")
+        self.url_var = tk.StringVar()
+        self.entry = ttk.Entry(frm, textvariable=self.url_var)
+        self.entry.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(2, 8))
+        frm.columnconfigure(0, weight=1)
+
+        # サイズ・余白
+        ttk.Label(frm, text="サイズ（BOX_SIZE）").grid(row=2, column=0, sticky="w")
+        self.box_var = tk.IntVar(value=DEFAULT_BOX_SIZE)
+        self.box_spin = ttk.Spinbox(frm, from_=2, to=20, textvariable=self.box_var, width=8)
+        self.box_spin.grid(row=2, column=1, sticky="w", padx=(8, 0))
+
+        ttk.Label(frm, text="余白（BORDER）").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        self.border_var = tk.IntVar(value=DEFAULT_BORDER)
+        self.border_spin = ttk.Spinbox(frm, from_=0, to=10, textvariable=self.border_var, width=8)
+        self.border_spin.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
+
+        # ボタン群
+        btn_frame = ttk.Frame(frm)
+        btn_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=10)
+        self.gen_btn = ttk.Button(btn_frame, text="QR作成", command=self.generate_qr)
+        self.gen_btn.pack(side="left")
+
+        self.save_btn = ttk.Button(btn_frame, text="画像として保存", command=self.save_qr, state="disabled")
+        self.save_btn.pack(side="left", padx=8)
+
+        # プレビュー
+        self.preview_label = ttk.Label(frm, text="プレビュー")
+        self.preview_label.grid(row=5, column=0, sticky="w", pady=(6, 2))
+        self.canvas = tk.Canvas(frm, width=300, height=300, bg="#f6f6f6")
+        self.canvas.grid(row=6, column=0, columnspan=3, sticky="n")
+        self.photo_img = None   # Tkinter向け画像ハンドル
+        self.last_img = None    # Pillow画像（保存用）
+
+        # ヒント
+        hint = (
+            "ヒント：PowerAppsのURLに ?vehicleId= や ?seatId= を付けて貼り付けると便利です。\n"
+            "例：https://apps.powerapps.com/...&vehicleId=VEH-001"
+        )
+        ttk.Label(frm, text=hint, foreground="#555").grid(row=7, column=0, columnspan=3, sticky="w", pady=(10, 0))
+
+    def generate_qr(self):
+        text = self.url_var.get().strip()
+        if not text:
+            messagebox.showwarning("入力不足", "URL（またはテキスト）を入力してください。")
+            return
+        try:
+            qr = qrcode.QRCode(
+                version=None,
+                error_correction=ERROR_CORRECT_M,
+                box_size=int(self.box_var.get()),
+                border=int(self.border_var.get()),
+            )
+            qr.add_data(text)
+            qr.make(fit=True)
+            img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+            # プレビュー用に縮小（キャンバスにフィット）
+            preview = img.copy()
+            preview.thumbnail((300, 300))
+            self.photo_img = ImageTk.PhotoImage(preview)
+            self.canvas.delete("all")
+            self.canvas.create_image(150, 150, image=self.photo_img)
+
+            self.last_img = img
+            self.save_btn.config(state="normal")
+        except Exception as e:
+            messagebox.showerror("生成失敗", f"QR生成に失敗しました：\n{e}")
+
+    def save_qr(self):
+        if self.last_img is None:
+            messagebox.showwarning("未生成", "先に『QR作成』を押してください。")
+            return
+        init_dir = Path.cwd() / "qrcodes"
+        init_dir.mkdir(exist_ok=True)
+
+        file = filedialog.asksaveasfilename(
+            title="保存先を選択",
+            defaultextension=".png",
+            initialdir=str(init_dir),
+            filetypes=[("PNG画像", "*.png"), ("JPEG画像", "*.jpg;*.jpeg"), ("BMP画像", "*.bmp")],
+        )
+        if not file:
+            return
+        try:
+            # 拡張子に合わせて保存
+            self.last_img.save(file)
+            messagebox.showinfo("保存完了", f"保存しました：\n{file}")
+        except Exception as e:
+            messagebox.showerror("保存失敗", f"保存に失敗しました：\n{e}")
+
+if __name__ == "__main__":
+    app = QRApp()
+    app.mainloop()
